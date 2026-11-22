@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=LumiRipple
+Comment=Reactive keyboard lighting
+Exec=/usr/local/bin/lumiripple open
+Icon=lumiripple
+Categories=Utility;
+Keywords=RGB;keyboard;OpenRGB;macro;
+Terminal=false

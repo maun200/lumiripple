@@ -1,0 +1,2 @@
+# LumiRipple types macros through /dev/uinput; only the group "input" (the service) gets access.
+KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"

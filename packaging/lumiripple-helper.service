@@ -1,0 +1,10 @@
+[Unit]
+Description=LumiRipple helper (sound and GPU)
+
+[Service]
+ExecStart=/usr/bin/env python3 -I /opt/lumiripple/lumiripple-service helper
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

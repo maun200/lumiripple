@@ -1,0 +1,35 @@
+[Unit]
+Description=LumiRipple keyboard lighting
+Documentation=https://github.com/OWNER/lumiripple
+After=OpenLinkHub.service
+
+[Service]
+ExecStart=/usr/bin/env python3 -I /opt/lumiripple/lumiripple-service run --no-helper
+LoadCredential=token:@TOKEN@
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+DynamicUser=yes
+SupplementaryGroups=input
+StateDirectory=lumiripple
+StateDirectoryMode=0700
+UMask=0077
+DevicePolicy=closed
+DeviceAllow=char-input r
+DeviceAllow=/dev/uinput rw
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_INET AF_UNIX
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=200M
+
+[Install]
+WantedBy=multi-user.target
