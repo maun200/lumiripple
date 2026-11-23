@@ -15,6 +15,7 @@ STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 FILES = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"), "/ui.js": ("ui.js", "text/javascript"),
          "/style.css": ("style.css", "text/css"), "/icon.svg": ("icon.svg", "image/svg+xml")}
 MAX_BODY = 1 << 17
+DRAIN_LIMIT = 1 << 20
 
 
 def read_token(path):
@@ -57,7 +58,22 @@ def make_handler(command, token, port):
         def _json(self, code, data):
             if code != 200:
                 self.close_connection = True        # the body may be unread
+                self._drain()
             self._reply(code, json.dumps(data).encode(), "application/json")
+
+        def _drain(self):
+            # Read a refused body before answering. Closing with unread data makes some systems (macOS)
+            # reset the connection, and the client never sees the answer. Very large bodies are not read.
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return
+            if 0 < n <= DRAIN_LIMIT:
+                while n > 0:
+                    got = self.rfile.read(min(n, 65536))
+                    if not got:
+                        break
+                    n -= len(got)
 
         def _allowed(self):
             return self.headers.get("Host") in hosts and self.headers.get("Origin") in (None, *origins)
