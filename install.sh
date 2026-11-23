@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # LumiRipple installer for Linux and macOS.
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/lumiripple/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/maun200/lumiripple/main/install.sh | bash
 # Remove it again with:  curl -fsSL .../install.sh | bash -s -- --uninstall
 # Everything is inside functions, so a download that breaks off halfway does nothing.
 set -euo pipefail
 
-REPO="${LUMIRIPPLE_REPO:-https://github.com/OWNER/lumiripple}"
+REPO="${LUMIRIPPLE_REPO:-https://github.com/maun200/lumiripple}"
 REF="${LUMIRIPPLE_REF:-main}"
 OPT=/opt/lumiripple
 

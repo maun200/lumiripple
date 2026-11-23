@@ -22,10 +22,10 @@ A virtual environment in `%LOCALAPPDATA%\LumiRipple` and shortcuts in the autost
 
 ## Removing
 ```sh
-curl -fsSL https://raw.githubusercontent.com/OWNER/lumiripple/main/install.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/maun200/lumiripple/main/install.sh | bash -s -- --uninstall
 ```
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/OWNER/lumiripple/main/install.ps1))) -Uninstall
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/maun200/lumiripple/main/install.ps1))) -Uninstall
 ```
 Settings stay: Linux `/var/lib/private/lumiripple`, macOS and Windows next to the token.
 

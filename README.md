@@ -14,13 +14,13 @@ projects support with named per-key LEDs. It is an independent project and not a
 **Linux** (Debian, Ubuntu, Fedora, Arch, openSUSE, Alpine, others with Python 3.10+) **and macOS**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/OWNER/lumiripple/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/maun200/lumiripple/main/install.sh | bash
 ```
 
 **Windows 10/11** (PowerShell, needs Python 3.10+)
 
 ```powershell
-irm https://raw.githubusercontent.com/OWNER/lumiripple/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/maun200/lumiripple/main/install.ps1 | iex
 ```
 
 Prefer to read before you run? Please do: [install.sh](install.sh), [install.ps1](install.ps1). Both also work from a checkout.

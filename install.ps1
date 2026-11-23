@@ -1,11 +1,11 @@
 # LumiRipple installer for Windows 10/11, for the current user, without administrator rights.
-#   irm https://raw.githubusercontent.com/OWNER/lumiripple/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/maun200/lumiripple/main/install.ps1 | iex
 # Remove it again:  & ([scriptblock]::Create((irm .../install.ps1))) -Uninstall
 param([switch]$Uninstall)
 
 function Install-LumiRipple([bool]$Remove) {
     $ErrorActionPreference = 'Stop'
-    $repo = if ($env:LUMIRIPPLE_REPO) { $env:LUMIRIPPLE_REPO } else { 'https://github.com/OWNER/lumiripple' }
+    $repo = if ($env:LUMIRIPPLE_REPO) { $env:LUMIRIPPLE_REPO } else { 'https://github.com/maun200/lumiripple' }
     $ref = if ($env:LUMIRIPPLE_REF) { $env:LUMIRIPPLE_REF } else { 'main' }
     $base = Join-Path $env:LOCALAPPDATA 'LumiRipple'
     $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'LumiRipple.lnk'

@@ -1,6 +1,6 @@
 [Unit]
 Description=LumiRipple keyboard lighting
-Documentation=https://github.com/OWNER/lumiripple
+Documentation=https://github.com/maun200/lumiripple
 After=OpenLinkHub.service
 
 [Service]
