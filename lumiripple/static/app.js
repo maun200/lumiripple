@@ -63,7 +63,8 @@ function build() {
   slider(s, "Overall brightness", "brightness");
   loaders.push(() => { prof.replaceChildren(...state.profiles.map(p => el("option", { value: p }, p))); prof.value = state.active; pk.value = state.profile_key || ""; });
 
-  s = section("Base color"); color(s, "Color", "area", "base", "color"); slider(s, "Brightness", "base", "brightness");
+  patternSection();
+  layerSection();
 
   s = section("Wave", "Runs outwards from every key you press"); check(s, "Wave on key press", null, "wave", "on"); color(s, "Color", "wave", "wave", "color");
   slider(s, "Brightness", "wave", "brightness"); slider(s, "Speed", "wave", "speed"); slider(s, "Width (tail)", "wave", "width"); slider(s, "Fade", "wave", "fade");
@@ -88,6 +89,70 @@ function build() {
   }
   macroSection();
 }
+// ---- effects -------------------------------------------------------------
+// Controls come from the effect's own description in meta.patterns, so a new effect needs no page change.
+const effect = kind => meta.patterns.find(p => p.name === kind);
+function effectValues(e, kind) { return { ...Object.fromEntries(effect(kind).controls.map(c => [c.name, c.default])), ...(e.pattern.values[kind] || {}) }; }
+function setEffect(kind, name, v) {
+  state.settings.pattern.values[kind] = state.settings.pattern.values[kind] || {};
+  set(["pattern", "values", kind, name], v);
+}
+function stepText(c, v) {
+  if (c.zero && v === 0) return c.zero;
+  if (c.unit === "%") return Math.round(v * 100) + " %";
+  const d = c.step < 1 ? Math.max(0, -Math.floor(Math.log10(c.step) + 1e-9)) : 0;
+  return v.toFixed(d) + (c.unit ? " " + c.unit : "");
+}
+function control(kind, c) {
+  // returns [row, show(value)]
+  if (c.kind === "number") {
+    const out = el("output"), i = el("input", { type: "range", min: c.min, max: c.max, step: c.step, "aria-label": c.title });
+    i.addEventListener("input", () => { const v = +(+i.value).toFixed(6); out.value = stepText(c, v); setEffect(kind, c.name, v); });
+    return [row(c.title, null, out, i), v => { if (document.activeElement !== i) i.value = v; out.value = stepText(c, +i.value); }];
+  }
+  if (c.kind === "choice") {
+    const n = select(c.options, c.default, v => setEffect(kind, c.name, v), c.title);
+    return [row(c.title, null, n), v => { n.value = v; }];
+  }
+  if (c.kind === "switch") {
+    const b = el("input", { type: "checkbox", "aria-label": c.title, onchange: () => setEffect(kind, c.name, b.checked) });
+    return [row(c.title, null, b), v => { b.checked = v; }];
+  }
+  const b = swatch(c.title, c.paint, meta, v => setEffect(kind, c.name, v));
+  return [row(c.title, null, b), v => b.show(v)];
+}
+function controlBox(kind, skip = () => false) {
+  const box = el("div"), shows = {};
+  for (const c of effect(kind).controls.filter(c => !skip(c))) { const [r, show] = control(kind, c); box.append(r); shows[c.name] = show; }
+  box.load = e => { const v = effectValues(e, kind); for (const [n, show] of Object.entries(shows)) show(v[n]); };
+  return box;
+}
+function patternSection() {
+  const s = section("Effect", "Lies under waves, displays and highlighted keys");
+  const pick = el("select", { "aria-label": "Effect", onchange: () => { state.settings.pattern.kind = pick.value; set(["pattern", "kind"], pick.value); show(state.settings); } },
+    ...meta.pattern_groups.map(g => el("optgroup", { label: g }, ...meta.patterns.filter(p => p.group === g).map(p => el("option", { value: p.name }, p.title)))));
+  const holder = el("div"), reset = el("button", { onclick: () => { const k = state.settings.pattern.kind;
+    const d = Object.fromEntries(effect(k).controls.map(c => [c.name, clone(c.default)]));
+    state.settings.pattern.values[k] = clone(d); set(["pattern", "values", k], d); show(state.settings); } }, "Reset effect");
+  s.append(row("Effect", null, pick), holder, row("", null, reset));
+  let box = null;
+  function show(e) {
+    pick.value = e.pattern.kind;
+    if (!box || box.kind !== e.pattern.kind) { box = controlBox(e.pattern.kind); box.kind = e.pattern.kind; holder.replaceChildren(box); }
+    box.load(e);
+  }
+  loaders.push(show);
+}
+function layerSection() {
+  const s = section("Typing layers", "Heat map and trail on top of any effect");
+  for (const kind of meta.layers) {
+    const box = controlBox(kind, c => c.name.startsWith("background")), sub = el("div", { class: "sub" }, box);
+    const b = el("input", { type: "checkbox", "aria-label": effect(kind).title, onchange: () => { sub.hidden = !b.checked; set(["layers", kind], b.checked); } });
+    s.append(row(effect(kind).title, "Over every effect", b), sub);
+    loaders.push(e => { b.checked = e.layers[kind]; sub.hidden = !b.checked; box.load(e); });
+  }
+}
+
 async function resetProfile() {
   const r = await ask("Reset to defaults?", `Profile "${state.active}". Name and other profiles stay.`, [["all", "Lighting and delete macros", "danger"], ["light", "Lighting only", "main"]]);
   if (r) run("profile_reset", { everything: r === "all" });

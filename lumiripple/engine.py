@@ -159,7 +159,8 @@ class Engine:
         for ln, dev, b in self._boards():
             key = (id(b), c.changes, c.active)
             if self.plans.get(id(b), (None,))[0] != key:
-                self.plans[id(b)] = (key, effects.make_plan(c.e, b))
+                old = self.plans.get(id(b), (None, None))[1]
+                self.plans[id(b)] = (key, effects.make_plan(c.e, b, old))
             f = effects.render(b, c.e, c.state, now, self.plans[id(b)][1])
             self.frames[id(b)] = f
             if self.last.get(id(b)) != f:

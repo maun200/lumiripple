@@ -1,5 +1,6 @@
 """Frame rendering. Pure functions, no hardware. Positions are in key units (one key = 1.0)."""
 import math
+from collections import deque
 from dataclasses import dataclass, field
 
 from . import keys
@@ -22,13 +23,18 @@ class State:
     mic: list | None = None
     pressed: dict = field(default_factory=dict)     # key name -> (since, released at or None)
     recording: bool = False
+    stereo: list | None = None                      # computer sound left/right 0..1
+    strokes: deque = field(default_factory=lambda: deque(maxlen=256))   # (number, key name, time), memory only
+    stroke_no: int = 0
 
 
 @dataclass
 class Plan:
     """Everything that only depends on settings and keyboard, prepared once."""
-    base: dict
+    pattern: object                                 # the running effect (patterns.Pattern); keeps its state
+    layers: list                                    # typing effects over it
     highlight: dict
+    high_brightness: dict                           # LED -> brightness of its own color (for layers over highlights)
     wave_paint: dict
     stats: dict
     sound: dict
@@ -91,15 +97,34 @@ def wave_color(p, age):
     return ramp(p["stops"], age) if isinstance(p, dict) else p
 
 
-def make_plan(e, board):
-    base = paint(e["base"]["color"], range(len(board.leds)), board.pos, e["base"]["brightness"])
-    hi, wave = {}, {}
+def _effect(setting, geo, old):
+    """The effect for these settings; the old one stays if nothing changed, or hands over what it collected."""
+    if old and old.name == setting["kind"] and old.raw == patterns.values(setting) and old.geo is geo:
+        return old
+    new = patterns.create(setting, geo)
+    if old and old.name == new.name and old.geo.leds == geo.leds:
+        new.adopt(old)                              # e.g. the heat map keeps its heat while you change a slider
+    return new
+
+
+def make_plan(e, board, old=None):
+    """old: the previous plan for the same board; running effects carry on from it."""
+    geo = old.pattern.geo if old and old.pattern.geo.pos is board.pos else patterns.Geometry(range(len(board.leds)), board.pos, board.by_key)
+    pattern = _effect(e["pattern"], geo, old.pattern if old else None)
+    layers = []
+    for kind in (k for k in patterns.LAYERS if e["layers"][k] and k != e["pattern"]["kind"]):
+        before = next((x for x in old.layers if x.name == kind), None) if old else None
+        layers.append(_effect({"kind": kind, "values": e["pattern"]["values"]}, geo, before))
+    hi, wave, bright = {}, {}, {}
     for label, p in e["extra"]["colors"].items():
-        hi.update(paint(p, board.extras.get(label, ()), board.pos, e["extra"]["brightness"]))
+        leds = board.extras.get(label, ())
+        hi.update(paint(p, leds, board.pos, e["extra"]["brightness"]))
+        bright.update(dict.fromkeys(leds, e["extra"]["brightness"]))
     for it in e["highlight"]["items"] if e["highlight"]["on"] else ():
         leds = [i for k in it["keys"] for i in board.by_key.get(k, ())]
         if it["color"]:
             hi.update(paint(it["color"], leds, board.pos, e["highlight"]["brightness"]))
+            bright.update(dict.fromkeys(leds, e["highlight"]["brightness"]))
         if it["wave"]:
             wave.update(dict.fromkeys(it["keys"], it["wave"]))
     stats = {}
@@ -110,7 +135,7 @@ def make_plan(e, board):
                 names = row[i:i + it["count"]]
                 for n, k in enumerate(names):
                     stats.update(dict.fromkeys(board.by_key[k], (it["metric"], n, len(names))))
-    return Plan(base, hi, wave, stats, _sound_plan(e, board))
+    return Plan(pattern, layers, hi, bright, wave, stats, _sound_plan(e, board))
 
 
 def _sound_plan(e, board):
@@ -145,7 +170,8 @@ def animated(s, e, now):
     """Does the picture change by itself right now?"""
     return ((e["wave"]["on"] and any(now - w[1] < e["wave"]["fade"] for w in s.waves))
             or (e["pressed"]["on"] and any(r is not None and now - r < e["pressed"]["release"] for _, r in s.pressed.values()))
-            or any(map(_moving, e["extra"]["colors"].values())) or _moving(e["base"]["color"]) or e["highlight"]["on"] and any(_moving(a["color"]) for a in e["highlight"]["items"])
+            or patterns.moving(e["pattern"]) or any(e["layers"].values())
+            or any(map(_moving, e["extra"]["colors"].values())) or e["highlight"]["on"] and any(_moving(a["color"]) for a in e["highlight"]["items"])
             or any(e[q]["on"] and bool(b := getattr(s, f)) and max(b) > 0 for q, f in SOURCES.items()))
 
 
@@ -162,8 +188,24 @@ def _sound(fields, e, s):
     return best, color
 
 
+_failed = set()
+
+
+def _safe(p, now, s):
+    """An effect that fails must not take the lighting down: its keys stay dark, the error is told once."""
+    try:
+        return p.paint(now, s)
+    except Exception as err:                         # any effect, any bug
+        if p.name not in _failed:
+            _failed.add(p.name)
+            print(f"effect {p.name} failed: {type(err).__name__}: {err}", flush=True)
+        p.over = {}
+        return {}
+
+
 def render(board, e, s, now, plan):
-    """One frame: list of (r, g, b). Priority: stats, highlighted keys, sound, wave, base color."""
+    """One frame: list of (r, g, b). Priority: pressed key (if over displays), stats, highlighted keys and other lights,
+    sound, wave, typing layers, effect."""
     w = e["wave"]
     waves = [(p, now - t, scale(wave_color(plan.wave_paint.get(k, w["color"]), (now - t) / w["fade"]), w["brightness"]))
              for p, t, k in s.waves if 0 <= now - t < w["fade"]] if w["on"] else []
@@ -172,11 +214,22 @@ def render(board, e, s, now, plan):
         t = 0.0 if up is None else (now - up) / g["release"] if g["release"] else 1.0
         if t < 1:
             down.update(dict.fromkeys(board.by_key.get(name, ()), (scale(wave_color(g["color"], t), g["brightness"]), 1 - t)))
-    out = []
+    out, base = [], _safe(plan.pattern, now, s)
+    for layer in plan.layers:
+        _safe(layer, now, s)
+    over = [p for p in (plan.pattern, *plan.layers) if p.values.get("over_highlights")]
     for i in range(len(board.leds)):
-        c, own = _now(plan.base[i], now), 0.0       # own: how strongly the key shows something itself
+        c, own = base.get(i, (0, 0, 0)), 0.0        # own: how strongly the key shows something itself
+        for layer in plan.layers:                   # heat map / trail over the effect
+            if i in layer.over:
+                col, v = layer.over[i]
+                c = mix(c, scale(col, layer.values["brightness"]), v)
         if i in plan.highlight:
             c, own = _now(plan.highlight[i], now), 1.0
+            for p in over:                          # on request also over WASD & co., at their brightness
+                if i in p.over:
+                    col, v = p.over[i]
+                    c = mix(c, scale(col, plan.high_brightness.get(i, 1.0)), v)
         value = getattr(s, plan.stats[i][0]) if i in plan.stats else None
         if value is not None:                       # a single key shows the value as a color
             _, step, count = plan.stats[i]
@@ -201,5 +254,9 @@ def render(board, e, s, now, plan):
             c = mix(c, col, v if g["over_displays"] else v * (1 - own))
         if s.recording and board.leds[i] == "Escape":   # recording must be visible
             c = (255, 0, 0) if int(now * 4) % 2 == 0 else (0, 0, 0)
-        out.append(tuple(min(max(int(x * e["brightness"] + 1e-6), 0), 255) for x in c))
+        out.append(tuple(min(max(int(dim(x, e["brightness"]) + 1e-6), 0), 255) for x in c))
     return out
+
+
+from . import patterns  # noqa: E402  (at the end: patterns needs this module)
+from .patterns.base import dim  # noqa: E402

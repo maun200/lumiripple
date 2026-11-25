@@ -40,7 +40,8 @@ No keyboard at hand? `python3 -m lumiripple run --demo` in a checkout, then `pyt
 |---|---|
 | Wave from the pressed key | color or gradient, brightness, speed, width, fade |
 | Pressed key lights up | color or gradient, brightness, fade out, over or under displays |
-| Base color | color or gradient in four directions, still or moving |
+| Effects (23) | Color: solid or gradient, breathing, color cycle · Motion: rainbow, visor, chaser, spin, fill · Nature: starry sky, flicker, rain, storm, watercolor, fire, matrix, game of life · Typing: heat map, trail · Music: mirrored spectrum, bass pulse, bass wave, left/right, hue follows pitch |
+| Typing layers | heat map and trail on top of any effect, optionally over highlighted keys |
 | Highlighted keys | any keys, own color and own wave color |
 | PC stats | CPU, GPU, RAM, GPU memory, temperatures on any neighbouring keys |
 | Sound and microphone | 16 bands on the number pad, letters, number row, F keys, navigation, main block or everything |

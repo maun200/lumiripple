@@ -5,7 +5,7 @@ import math
 import os
 import time
 
-from . import config, effects, keys, macros
+from . import config, effects, keys, macros, patterns
 
 TRIGGERS = [k.name for k in keys.KEYS] + [f"F{i}" for i in range(13, 25)]
 
@@ -35,7 +35,19 @@ class Core:
         for n, m in p["macros"].items():
             ms[config.title(n)] = {"trigger": str(m["trigger"]), "speed": float(m["speed"]), "instant": bool(m["instant"]),
                                    "events": [[float(t), k, bool(d)] for t, k, d in m["events"]]}
-        return {"settings": config.merge(config.DEFAULTS, p["settings"]), "macros": ms}
+        return {"settings": Core._settings(p["settings"]), "macros": ms}
+
+    @staticmethod
+    def _settings(stored):
+        """Strict for everything but the effect: that one is read leniently, so a changed effect never throws the file
+        away. Profiles from 0.1 had a base color; it becomes the effect "solid"."""
+        s = dict(stored)
+        base, pattern = s.pop("base", None), s.pop("pattern", None)
+        if pattern is None and isinstance(base, dict):
+            pattern = {"kind": "solid", "values": {"solid": {k: v for k, v in base.items() if k in ("color", "brightness")}}}
+        out = config.merge(config.DEFAULTS, s)
+        out["pattern"] = patterns.clean(pattern)
+        return out
 
     def _load(self):
         self.data = {"active": "Default", "profile_key": None, "profiles": {}}
@@ -111,6 +123,8 @@ class Core:
         k = keys.BY_NAME[name]
         self.state.waves = self.state.waves[-11:] + [((k.x + k.w / 2, k.y + k.h / 2), now, name)]
         self.state.pressed[name] = (now, None)
+        self.state.stroke_no += 1
+        self.state.strokes.append((self.state.stroke_no, name, now))
 
     def _release(self, name, now):
         if name in self.state.pressed and self.state.pressed[name][1] is None:
@@ -140,12 +154,16 @@ class Core:
         for q, f in effects.SOURCES.items():
             if now - self.sound_at[q] > 1:
                 setattr(s, f, None)
+                if q == "sound":
+                    s.stereo = None
         if now - self.gpu_at > 5:
             s.gpu = s.gpu_temp = s.vram = None
         s.recording = self.recording is not None
         fade, rel = self.e["wave"]["fade"], self.e["pressed"]["release"]
         s.waves = [w for w in s.waves if now - w[1] < fade]
         s.pressed = {n: t for n, t in s.pressed.items() if t[1] is None or now - t[1] <= rel}
+        while s.strokes and now - s.strokes[0][2] > 2:     # effects take strokes within a frame; nothing is kept longer
+            s.strokes.popleft()
 
     def _stop(self, now):
         self.draft, self.recording = self.recording.finish(now) or None, None
@@ -184,12 +202,14 @@ class Core:
         return {"keys": [[k.name, k.x, k.y, k.w, k.h] for k in keys.KEYS], "rows": keys.rows(), "triggers": TRIGGERS,
                 "areas": {a: t for a, (t, _) in keys.AREAS.items()}, "groups": keys.GROUPS, "metrics": config.METRICS,
                 "directions": config.DIRECTIONS, "limits": config.LIMITS, "defaults": config.DEFAULTS,
-                "macro_speed": config.MACRO_SPEED, "max_gradient_speed": config.MAX_GRADIENT_SPEED, "max_stops": config.MAX_STOPS}
+                "macro_speed": config.MACRO_SPEED, "max_gradient_speed": config.MAX_GRADIENT_SPEED, "max_stops": config.MAX_STOPS,
+                "patterns": patterns.catalog(), "pattern_groups": patterns.GROUPS, "layers": list(patterns.LAYERS)}
 
     def _c_needs(self, b):
         self.helper_at = time.monotonic()
         st = self.e["stats"]
-        return {**{q: self.e[q]["on"] and bool(self.e[q]["areas"]) for q in effects.SOURCES},
+        return {**{q: self.e[q]["on"] and bool(self.e[q]["areas"]) or q in patterns.ALL[self.e["pattern"]["kind"]].needs
+                   for q in effects.SOURCES},
                 "gpu": st["on"] and any(a["metric"] in ("gpu", "vram", "gpu_temp") for a in st["items"])}
 
     def _c_set(self, b):
@@ -201,6 +221,12 @@ class Core:
         if not (isinstance(q, str) and q in effects.SOURCES and isinstance(v, list) and len(v) == effects.BANDS
                 and all(type(x) in (int, float) and 0 <= x <= 1 for x in v)):
             raise Refused("invalid sound levels")
+        st = b.get("stereo")
+        if st is not None and not (q == "sound" and isinstance(st, list) and len(st) == 2
+                                   and all(type(x) in (int, float) and 0 <= x <= 1 for x in st)):
+            raise Refused("invalid sound levels")
+        if q == "sound":
+            self.state.stereo = st
         setattr(self.state, effects.SOURCES[q], v)
         self.sound_at[q] = time.monotonic()
 

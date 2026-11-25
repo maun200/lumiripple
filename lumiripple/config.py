@@ -12,7 +12,8 @@ MACRO_SPEED = (0.25, 4.0)
 
 DEFAULTS = {
     "brightness": 1.0,
-    "base": {"color": [0, 40, 60], "brightness": 1.0},
+    "pattern": {"kind": "solid", "values": {}},      # the effect under everything, see patterns/
+    "layers": {"heat": False, "trail": False},       # typing effects that also run over any effect
     "wave": {"on": True, "color": [0, 255, 255], "brightness": 1.0, "speed": 9.0, "width": 0.9, "fade": 1.4},
     "pressed": {"on": True, "color": [255, 255, 255], "brightness": 1.0, "release": 0.35, "over_displays": True},
     "press": {"on": False, "min_ms": 30},           # ignore touches shorter than this (lighting only)
@@ -52,6 +53,9 @@ def _highlight(a):
 
 
 def _check(path, key, old, new):
+    if path == ("pattern",):
+        from . import patterns                       # here, because patterns needs this module
+        return patterns.merge(old, new)
     if key == "color":
         ok = is_paint(new)
     elif path[:1] == ("extra",) and key == "colors":

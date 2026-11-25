@@ -11,7 +11,7 @@ def grad(*stops, direction="horizontal", speed=0):
 
 class Base(unittest.TestCase):
     def setUp(self):
-        self.e = config.merge(config.DEFAULTS, {"base": {"color": [0, 0, 0]}, "stats": {"on": False}, "sound": {"on": False}})
+        self.e = config.merge(config.DEFAULTS, {"pattern": {"values": {"solid": {"color": [0, 0, 0]}}}, "stats": {"on": False}, "sound": {"on": False}})
         self.s, self.board = effects.State(), BOARD
 
     def frame(self, t=0.0):
@@ -81,8 +81,8 @@ class Settings(unittest.TestCase):
     def test_rejects_everything_invalid(self):
         g, h, s = grad((0, 0, 0), (1, 1, 1)), {"keys": ["A"], "color": None, "wave": None}, {"metric": "cpu", "start": "F1", "count": 4}
         bad = [[], {"nope": 1}, {"wave": 5}, {"wave": {"speed": "x"}}, {"wave": {"speed": -1}}, {"wave": {"speed": float("nan")}}, {"wave": {"on": 1}},
-               {"base": {"color": [0, 0, 300]}}, {"base": {"color": [True, 0, 0]}}, {"base": {"color": {}}}, {"base": {"color": {**g, "speed": 9}}},
-               {"base": {"color": {**g, "direction": []}}}, {"base": {"color": {**g, "stops": [[0, 0, 0]]}}}, {"base": {"color": {**g, "x": 1}}},
+               {"pattern": {"values": {"solid": {"color": [0, 0, 300]}}}}, {"pattern": {"values": {"solid": {"color": [True, 0, 0]}}}}, {"pattern": {"values": {"solid": {"color": {}}}}}, {"pattern": {"values": {"solid": {"color": {**g, "speed": 9}}}}},
+               {"pattern": {"values": {"solid": {"color": {**g, "direction": []}}}}}, {"pattern": {"values": {"solid": {"color": {**g, "stops": [[0, 0, 0]]}}}}}, {"pattern": {"values": {"solid": {"color": {**g, "x": 1}}}}},
                {"stats": {"colors": [[0, 0, 0]]}}, {"stats": {"items": [{**s, "metric": "x"}]}}, {"stats": {"items": [{**s, "start": "nokey"}]}},
                {"stats": {"items": [{**s, "count": 0}]}}, {"stats": {"items": [s] * 13}}, {"highlight": {"items": [{**h, "keys": ["A", "A"]}]}},
                {"highlight": {"items": [{**h, "keys": [4]}]}}, {"highlight": {"items": [{**h, "color": "red"}]}}, {"highlight": {"items": [s]}},
@@ -94,9 +94,9 @@ class Settings(unittest.TestCase):
 
     def test_accepts_gradients_and_back(self):
         g = grad((0, 0, 0), (1, 2, 3), speed=1.5)
-        e = config.merge(config.DEFAULTS, {"base": {"color": g}, "extra": {"colors": {"Logo": g}}})
-        self.assertEqual(e["base"]["color"], g)
-        self.assertEqual(config.merge(e, {"base": {"color": [1, 2, 3]}, "extra": {"colors": {}}})["extra"]["colors"], {})
+        e = config.merge(config.DEFAULTS, {"pattern": {"values": {"solid": {"color": g}}}, "extra": {"colors": {"Logo": g}}})
+        self.assertEqual(e["pattern"]["values"]["solid"]["color"], g)
+        self.assertEqual(config.merge(e, {"pattern": {"values": {"solid": {"color": [1, 2, 3]}}}, "extra": {"colors": {}}})["extra"]["colors"], {})
 
 
 class Waves(Base):
@@ -188,28 +188,28 @@ class Displays(Base):
         self.assertEqual(self.frame(0.0)["Escape"], (255, 0, 0))
 
     def test_brightness(self):
-        self.e["base"].update(color=[200, 100, 0], brightness=.5)
+        self.e["pattern"]["values"]["solid"] = {"color": [200, 100, 0], "brightness": .5}
         self.e["brightness"] = .5
         self.assertEqual(self.frame()["A"], (50, 25, 0))
 
 
 class Gradients(Base):
     def test_moving_gradient_is_seamless(self):
-        self.e["base"]["color"] = grad((0, 0, 0), (200, 0, 0), speed=.5)
+        self.e["pattern"]["values"]["solid"] = {"color": grad((0, 0, 0), (200, 0, 0), speed=.5)}
         self.assertTrue(effects.animated(self.s, self.e, 0))
         self.assertEqual(self.frame(0), self.frame(2.0))
         for i in range(200):
             self.assertLessEqual(abs(self.frame(i / 100)["A"][0] - self.frame((i + 1) / 100)["A"][0]), 3)
 
     def test_still_gradient_spans_the_board(self):
-        self.e["base"]["color"] = grad((0, 0, 0), (200, 100, 50))
+        self.e["pattern"]["values"]["solid"] = {"color": grad((0, 0, 0), (200, 100, 50))}
         self.assertFalse(effects.animated(self.s, self.e, 0))
         f = self.frame()
         self.assertEqual((f["Escape"], f["Media Next"]), ((0, 0, 0), (200, 100, 50)))
 
     def test_all_directions(self):
         for d in config.DIRECTIONS:
-            self.e["base"]["color"] = grad((0, 0, 0), (255, 255, 255), direction=d)
+            self.e["pattern"]["values"]["solid"] = {"color": grad((0, 0, 0), (255, 255, 255), direction=d)}
             self.assertGreater(len(set(self.frame().values())), 3, d)
 
 

@@ -1,7 +1,12 @@
 # Security and privacy
 
 **What it can see.** To react to keys, LumiRipple reads key events of all real keyboards. It keeps the position of running waves
-(seconds) and which keys are held. It writes no key log.
+(seconds), which keys are held, and the last key presses for 2 seconds. It writes no key log.
+
+**Typing effects** keep more, in memory only and never on disk: the heat map counts presses per key (the count halves after the
+time you set, at most 30 minutes), the trail remembers when each key was last pressed (at most 20 seconds). Their colors show in
+the keyboard preview on the settings page, so whoever can open that page (anyone with the token) can see roughly which keys were
+used often or just now. Switch these effects off if that matters to you.
 
 **Macros are the exception.** Between *Record* and *Stop* (at most 60 s) key presses are kept and, if you save, stored unencrypted in
 the settings file (readable only by the service). Never record passwords. The settings page never gets macro contents back, only

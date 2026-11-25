@@ -26,6 +26,80 @@ class Levels(unittest.TestCase):
         self.assertEqual(v, [0] * 16)
 
 
+@unittest.skipIf(helper.np is None, "numpy is not installed")
+class Stereo(unittest.TestCase):
+    def test_channel_level(self):
+        np = helper.np
+        self.assertEqual(helper.channel_level(np.zeros(100)), 0)
+        self.assertAlmostEqual(helper.channel_level(np.ones(100)), 1)
+        self.assertAlmostEqual(helper.channel_level(np.ones(100) * 0.1), 0.6, delta=0.01)     # -20 dB
+
+    def test_sound_is_sent_with_left_and_right(self):
+        import threading
+        import time
+        np = helper.np
+        sent = []
+
+        class Stream:
+            def __init__(self, source):
+                self.source = source
+
+            def read(self, n):
+                time.sleep(0.01)
+                t = np.arange(n) / helper.RATE
+                return np.stack([np.sin(2 * np.pi * 440 * t) * 0.8, np.zeros(n)], axis=1)
+
+            def close(self):
+                pass
+
+        def call(cmd, **kw):
+            if cmd == "needs":
+                return {"sound": True, "mic": False, "gpu": False}
+            sent.append((cmd, kw))
+            return {}
+        h = helper.Helper(call)
+        h.opener = Stream
+        t = threading.Thread(target=h.run, daemon=True)
+        t.start()
+        time.sleep(1.5)
+        h.stop()
+        t.join(3)
+        audio = [kw for cmd, kw in sent if cmd == "audio"]
+        self.assertTrue(audio)
+        left, right = audio[-1]["stereo"]
+        self.assertGreater(left, 0.5)
+        self.assertEqual(right, 0)
+
+
+@unittest.skipIf(helper.np is None, "numpy is not installed")
+class Mono(unittest.TestCase):
+    def test_falls_back_to_one_channel(self):
+        import sys
+        import types
+        asked = []
+
+        class Mic:
+            def recorder(self, samplerate, channels, blocksize):
+                asked.append(channels)
+                if channels == 2:
+                    raise RuntimeError("only one channel")
+                return types.SimpleNamespace(__enter__=lambda: None, __exit__=lambda *a: None)
+
+        fake = types.SimpleNamespace(get_microphone=lambda *a, **k: Mic(), default_speaker=lambda: types.SimpleNamespace(id=1),
+                                     default_microphone=lambda: Mic())
+        old = sys.modules.get("soundcard")
+        sys.modules["soundcard"] = fake
+        try:
+            st = helper.SoundCard("sound")
+        finally:
+            if old is None:
+                del sys.modules["soundcard"]
+            else:
+                sys.modules["soundcard"] = old
+        self.assertEqual(asked, [2, 1])
+        self.assertEqual(st.channels, 1)
+
+
 class Sources(unittest.TestCase):
     def test_nothing_is_opened_unless_wanted(self):
         opened = []

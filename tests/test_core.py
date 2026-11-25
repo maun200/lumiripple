@@ -48,7 +48,7 @@ class CoreTest(unittest.TestCase):
             self.assertEqual(os.stat(self.c.file).st_mode & 0o777, 0o600)
 
     def test_nonsense_is_refused_and_harms_nothing(self):
-        for b in (None, [], "x", {}, {"cmd": 5}, {"cmd": "nope"}, {"cmd": "__init__"}, {"cmd": "set"}, {"cmd": "set", "settings": {"base": {"color": "red"}}},
+        for b in (None, [], "x", {}, {"cmd": 5}, {"cmd": "nope"}, {"cmd": "__init__"}, {"cmd": "set"}, {"cmd": "set", "settings": {"pattern": {"values": {"solid": {"color": "red"}}}}},
                   {"cmd": "audio", "source": "sound", "levels": [1]}, {"cmd": "audio", "source": "x", "levels": [0] * 16}, {"cmd": "audio", "source": "mic", "levels": [2] * 16},
                   {"cmd": "gpu", "load": 2, "temp": 1, "memory": 0}, {"cmd": "gpu", "load": 0, "temp": float("nan"), "memory": 0}, {"cmd": "profile_switch", "name": []},
                   {"cmd": "profile_new", "name": " "}, {"cmd": "profile_new", "name": "default"}, {"cmd": "profile_delete", "name": "Default"}, {"cmd": "profile_key", "key": "x"},
@@ -65,9 +65,9 @@ class CoreTest(unittest.TestCase):
         self.assertTrue(any("broken" in n for n in os.listdir(self.dir)))
 
     def test_profiles(self):
-        self.do("set", settings={"base": {"color": [9, 9, 9]}})
+        self.do("set", settings={"pattern": {"values": {"solid": {"color": [9, 9, 9]}}}})
         self.assertTrue(self.do("profile_new", name="Büro & Spiel")["ok"])
-        self.do("set", settings={"base": {"color": [1, 1, 1]}})
+        self.do("set", settings={"pattern": {"values": {"solid": {"color": [1, 1, 1]}}}})
         self.do("profile_rename", name="Default", title="Daily")
         self.assertFalse(self.do("profile_rename", name="Daily", title="büro & spiel")["ok"])
         self.assertTrue(self.do("profile_rename", name="Büro & Spiel", title="Game")["ok"])
@@ -75,7 +75,7 @@ class CoreTest(unittest.TestCase):
         self.do("profile_reset", everything=False)
         self.assertEqual(self.c.e, config.DEFAULTS)
         self.do("profile_switch", name="Daily")
-        self.assertEqual(self.c.e["base"]["color"], [9, 9, 9])
+        self.assertEqual(self.c.e["pattern"]["values"]["solid"]["color"], [9, 9, 9])
         self.assertTrue(self.do("profile_delete", name="Game")["ok"])
 
     def test_profile_key_cycles(self):

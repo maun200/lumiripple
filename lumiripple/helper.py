@@ -29,6 +29,13 @@ def levels(samples):
     return out
 
 
+def channel_level(samples):
+    """Loudness of one channel 0..1 (-50 dB to 0 dB, as RMS). samples: floats -1..1"""
+    rms = float(np.sqrt(np.mean(np.asarray(samples, dtype=float) ** 2))) if len(samples) else 0.0
+    db = 20 * np.log10(max(rms, 1e-9))
+    return 0 if db <= -50 else round(min((db + 50) / 50, 1), 3)
+
+
 def smooth(old, new):
     """Rises at once, falls softly."""
     return [0 if (x := max(n, o * .8)) < .02 else round(float(x), 3) for o, n in zip(old, new)]
@@ -42,15 +49,17 @@ class Parec:
             dev = subprocess.check_output(["pactl", "get-default-sink"], text=True, timeout=3).strip() + ".monitor"
         else:
             dev = subprocess.check_output(["pactl", "get-default-source"], text=True, timeout=3).strip()
-        self.device = dev
-        self.p = subprocess.Popen(["parec", f"--device={dev}", "--format=s16le", f"--rate={RATE}", "--channels=1",
+        self.device, self.channels = dev, 2 if source == "sound" else 1
+        self.p = subprocess.Popen(["parec", f"--device={dev}", "--format=s16le", f"--rate={RATE}", f"--channels={self.channels}",
                                    "--latency-msec=30", "--client-name=LumiRipple"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
     def read(self, n):
-        data = self.p.stdout.read(n * 2)
-        if len(data) < n * 2:
+        """n frames as an array (n, channels), -1..1."""
+        size = n * 2 * self.channels
+        data = self.p.stdout.read(size)
+        if len(data) < size:
             raise OSError("the sound stream ended")
-        return np.frombuffer(data, "<i2") / 32768
+        return (np.frombuffer(data, "<i2") / 32768).reshape(n, self.channels)
 
     def close(self):
         self.p.kill()
@@ -65,11 +74,16 @@ class SoundCard:
         import soundcard
         mic = (soundcard.get_microphone(str(soundcard.default_speaker().id), include_loopback=True) if source == "sound"
                else soundcard.default_microphone())
-        self.ctx = mic.recorder(samplerate=RATE, channels=1, blocksize=STEP)
+        self.channels = 2 if source == "sound" else 1
+        try:
+            self.ctx = mic.recorder(samplerate=RATE, channels=self.channels, blocksize=STEP)
+        except Exception:                           # a device without two channels: sound bands still work in mono
+            self.channels = 1
+            self.ctx = mic.recorder(samplerate=RATE, channels=1, blocksize=STEP)
         self.rec = self.ctx.__enter__()
 
     def read(self, n):
-        return np.asarray(self.rec.record(numframes=n)).reshape(-1)
+        return np.asarray(self.rec.record(numframes=n)).reshape(n, self.channels)
 
     def close(self):
         self.ctx.__exit__(None, None, None)
@@ -90,13 +104,21 @@ class Helper:
             try:
                 stream = self.opener(source)
                 buf, last, quiet, check = np.zeros(N), [0] * 16, True, time.monotonic() + 5
+                pair, sides = np.zeros((N, 2)), [0, 0]
                 self.errors.pop(source, None)
                 while self.wanted.get(source) and not self.stopping.is_set():
-                    buf = np.concatenate((buf, stream.read(STEP)))[-N:]
+                    block = np.asarray(stream.read(STEP), dtype=float)
+                    block = block.reshape(len(block), -1)
+                    buf = np.concatenate((buf, block.mean(axis=1)))[-N:]       # bands from the mix of all channels
                     last = smooth(last, levels(buf))
-                    was, quiet = quiet, not any(last)
+                    extra = {}
+                    if source == "sound" and block.shape[1] == 2:             # left and right for the stereo effect
+                        pair = np.concatenate((pair, block))[-N:]
+                        sides = smooth(sides, [channel_level(pair[:, 0]), channel_level(pair[:, 1])])
+                        extra = {"stereo": sides}
+                    was, quiet = quiet, not any(last) and not any(sides)
                     if not (was and quiet):
-                        self.call("audio", source=source, levels=last)
+                        self.call("audio", source=source, levels=last, **extra)
                     if source == "sound" and isinstance(stream, Parec) and time.monotonic() > check:   # default output changed?
                         check = time.monotonic() + 5
                         now = subprocess.check_output(["pactl", "get-default-sink"], text=True, timeout=3).strip() + ".monitor"
